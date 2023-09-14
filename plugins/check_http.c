@@ -122,6 +122,7 @@ bool use_sni = false;
 bool verbose = false;
 bool show_extended_perfdata = false;
 bool show_body = false;
+bool rand_querystring = false;
 int sd;
 int min_page_len = 0;
 int max_page_len = 0;
@@ -151,11 +152,16 @@ char *perfd_size (int page_len);
 void print_help (void);
 void print_usage (void);
 char *unchunk_content(const char *content);
+char *random_string();
+bool has_querystring();
 
 int
 main (int argc, char **argv)
 {
   int result = STATE_UNKNOWN;
+  char joinChar = '?';
+  char* tmp;
+  char* randQS;
 
   setlocale (LC_ALL, "");
   bindtextdomain (PACKAGE, LOCALEDIR);
@@ -172,6 +178,16 @@ main (int argc, char **argv)
 
   if (process_arguments (argc, argv) == false)
     usage4 (_("Could not parse arguments"));
+
+  if (rand_querystring) {
+    if(has_querystring()) {
+      joinChar = '&';
+    }
+    randQS = random_string();
+    asprintf(&tmp, "%s%c%s", server_url, joinChar, randQS);
+    free(server_url);
+    server_url = tmp;
+  }
 
   if (display_html == true)
     printf ("<A HREF=\"%s://%s:%d%s\" target=\"_blank\">",
@@ -251,6 +267,7 @@ bool process_arguments (int argc, char **argv)
     {"extended-perfdata", no_argument, 0, 'E'},
     {"show-body", no_argument, 0, 'B'},
     {"max-redirs", required_argument, 0, MAX_REDIRS_OPTION},
+    {"rand-query-string", no_argument, 0, 'Q'},
     {0, 0, 0, 0}
   };
 
@@ -271,7 +288,7 @@ bool process_arguments (int argc, char **argv)
   }
 
   while (1) {
-    c = getopt_long (argc, argv, "Vvh46t:c:w:A:k:H:P:j:T:I:a:b:d:e:p:s:R:r:u:f:C:J:K:nlLS::m:M:NEB", longopts, &option);
+    c = getopt_long (argc, argv, "Vvh46t:c:w:A:k:H:P:j:T:I:a:b:d:e:p:s:R:r:u:f:C:J:K:nlLS::m:M:NEBQ", longopts, &option);
     if (c == -1 || c == EOF)
       break;
 
@@ -441,6 +458,7 @@ bool process_arguments (int argc, char **argv)
       server_address = strdup (optarg);
       break;
     case 'u': /* URL path */
+      free(server_url);
       server_url = strdup (optarg);
       server_url_length = strlen (server_url);
       break;
@@ -573,6 +591,8 @@ bool process_arguments (int argc, char **argv)
     case 'B': /* print body content after status line */
       show_body = true;
       break;
+    case 'Q': /* add a random query string variable to the url to bust CDN caches */
+      rand_querystring = true;
     }
   }
 
@@ -1466,6 +1486,42 @@ char *unchunk_content(const char *content) {
   return result;
 }
 
+/**
+ * Generates a random 64 charater string to be used for CDN busting.
+*/
+char *random_string() {
+
+  static char* chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  char* retStr = NULL;
+
+  retStr = malloc(sizeof(char) * 65);
+
+  if(retStr) {
+    for (int n = 0;n < 64; n++) {            
+        int idx = rand() % (int)(sizeof(chars) - 1);
+        retStr[n] = chars[idx];
+      }
+
+      retStr[64] = '\0';
+  }
+
+  return retStr;
+}
+
+/**
+ * Checks the server_url for a query string.
+*/
+bool has_querystring() {
+
+  int idx=0;
+  while(server_url[idx] != '\0') {
+    if(server_url[idx] == '?') return true;
+    idx++;
+  }
+
+  return false;
+}
+
 /* per RFC 2396 */
 #define URI_HTTP "%5[HTPShtps]"
 #define URI_HOST "%255[-.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]"
@@ -1812,6 +1868,8 @@ print_help (void)
   printf ("%d)\n", DEFAULT_MAX_REDIRS);
   printf (" %s\n", "-m, --pagesize=INTEGER<:INTEGER>");
   printf ("    %s\n", _("Minimum page size required (bytes) : Maximum page size required (bytes)"));
+  printf (" %s\n", "-Q, --rand-query-string");
+  printf ("    %s\n", _("Generate a random query string variable. Used to bust CDN caches."));
   printf (UT_WARN_CRIT);
 
   printf (UT_CONN_TIMEOUT, DEFAULT_SOCKET_TIMEOUT);
@@ -1883,7 +1941,7 @@ print_usage (void)
   printf ("       [-e <expect>] [-d string] [-s string] [-l] [-r <regex> | -R <case-insensitive regex>]\n");
   printf ("       [-P string] [-m <min_pg_size>:<max_pg_size>] [-4|-6] [-N] [-M <age>]\n");
   printf ("       [-A string] [-k string] [-S <version>] [--sni]\n");
-  printf ("       [-T <content-type>] [-j method]\n");
+  printf ("       [-T <content-type>] [-j method] -Q\n");
   printf (" %s -H <vhost> | -I <IP-address> -C <warn_age>[,<crit_age>]\n",progname);
-  printf ("       [-p <port>] [-t <timeout>] [-4|-6] [--sni]\n");
+  printf ("       [-p <port>] [-t <timeout>] [-4|-6] [--sni] -Q\n");
 }
