@@ -1496,6 +1496,7 @@ char *random_string() {
 
   retStr = malloc(sizeof(char) * 65);
 
+  srand( time(NULL) );
   if(retStr) {
     for (int n = 0;n < 64; n++) {            
         int idx = rand() % (int)(sizeof(chars) - 1);
